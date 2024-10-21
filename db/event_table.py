@@ -12,8 +12,7 @@ cursor.execute('''
         event_status TEXT NOT NULL,
         event_datetime DATETIME DEFAULT CURRENT_TIMESTAMP,
         priority TEXT NOT NULL,
-        category TEXT NOT NULL,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        category TEXT NOT NULL
     )
 ''')
 

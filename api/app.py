@@ -1,7 +1,5 @@
-from flask import Flask
-from graphene import ObjectType, String, Int, Field, List
-from graphene import Schema
-from flask_graphql import GraphQLView
+from flask import Flask, request, jsonify
+from graphene import ObjectType, String, Int, Field, List, Schema, Mutation as BaseMutation
 import sqlite3
 
 import graphene
@@ -56,42 +54,85 @@ class AddEvent(graphene.Mutation):
     event = Field(lambda: EventType)
 
     def mutate(self, info, event_type, event_status, priority, category):
+        print(f"Received Mutation: event_type={event_type}, event_status={event_status}, priority={priority}, category={category}")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute('''
-            INSERT INTO event_log (event_type, event_status, priority, category)
-            VALUES (?, ?, ?, ?)
-        ''', (event_type, event_status, priority, category))
+        try:
+            # Insert event into the database
+            cursor.execute('''
+                INSERT INTO event_log (event_type, event_status, priority, category)
+                VALUES (?, ?, ?, ?)
+            ''', (event_type, event_status, priority, category))
 
-        conn.commit()
-        event_id = cursor.lastrowid
-        conn.close()
+            conn.commit()
+            event_id = cursor.lastrowid
+            print(f"Inserted Event with ID: {event_id}")
 
-        event = EventType(
-            event_id=event_id,
-            event_type=event_type,
-            event_status=event_status,
-            event_datetime="Now",
-            priority=priority,
-            category=category
-        )
-        return AddEvent(ok="Event added successfully", event=event)
+            event = EventType(
+                event_id=event_id,
+                event_type=event_type,
+                event_status=event_status,
+                event_datetime="Now",
+                priority=priority,
+                category=category
+            )
 
-# Define Mutation class
-class Mutation(ObjectType):
+            return AddEvent(ok="Event added successfully", event=event)
+
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return AddEvent(ok="Failed to add event", event=None)
+
+        except Exception as e:
+            print(f"Other error: {e}")
+            return AddEvent(ok="Failed to add event", event=None)
+
+        finally:
+            conn.close()
+
+# Define the Mutation class
+class Mutation(graphene.ObjectType):
     add_event = AddEvent.Field()
 
 # Create a schema for GraphQL
-schema = Schema(query=Query, mutation=Mutation)
+# schema = Schema(query=Query, mutation=Mutation)
+schema = graphene.Schema(query=Query, mutation=Mutation)
 
-# Set up Flask app to use GraphQL
-app.add_url_rule('/graphql', view_func=GraphQLView.as_view(
-    'graphql',
-    schema=schema,
-    graphiql=True  # Enable GraphiQL interface
-))
 
-# Run Flask app
+# Set up Flask route to handle GraphQL requests
+@app.route("/graphql", methods=["POST"])
+def graphql():
+    data = request.get_json()
+    result = schema.execute(data.get("query"))
+    return jsonify(result.data)
+
+@app.route("/test_db")
+def test_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Try inserting a test event into the database
+        cursor.execute('''
+            INSERT INTO event_log (event_type, event_status, priority, category)
+            VALUES (?, ?, ?, ?)
+        ''', ('TEST_TYPE', 'TEST_STATUS', 'HIGH', 'TEST_CATEGORY'))
+
+        conn.commit()
+        return "Event added successfully!"
+    except Exception as e:
+        return f"Error: {e}"
+    finally:
+        conn.close()
+
+
+# Define a route for the root URL to avoid 404
+@app.route('/')
+def index():
+    return "Welcome to the GraphQL API"
+
+# Run the Flask app
 if __name__ == '__main__':
     app.run(debug=True)
