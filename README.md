@@ -83,7 +83,6 @@ Here are the main API endpoints available:
    - **Method:** `GET`
    - **Response Example:**
      ```json
-     [
        {
          "event_id": 1,
          "event_type": "ERROR",
@@ -92,8 +91,6 @@ Here are the main API endpoints available:
          "category": "SYSTEM",
          "event_datetime": "2024-10-21 22:45:12"
        },
-       ...
-     ]
      ```
 
 ## Testing
