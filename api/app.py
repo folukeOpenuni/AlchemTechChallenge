@@ -1,138 +1,136 @@
 from flask import Flask, request, jsonify
-from graphene import ObjectType, String, Int, Field, List, Schema, Mutation as BaseMutation
 import sqlite3
+from flask_cors import CORS
+import time
+import threading
+import random
 
-import graphene
-
-# Initialize Flask app
 app = Flask(__name__)
+CORS(app)
 
-# Define the SQLite database connection
+# Database connection
 def get_db_connection():
     conn = sqlite3.connect('event_log.db')
-    conn.row_factory = sqlite3.Row  # This allows us to access rows as dictionaries
+    conn.row_factory = sqlite3.Row  # return rows as dictionaries
     return conn
 
-# Define the EventType for GraphQL
-class EventType(ObjectType):
-    event_id = Int()
-    event_type = String()
-    event_status = String()
-    event_datetime = String()
-    priority = String()
-    category = String()
+# Root route
+@app.route('/')
+def index():
+    return "Welcome to the Event Log API!"
 
-# Define the Query class to get events
-class Query(ObjectType):
-    events = List(EventType)
-
-    def resolve_events(self, info):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM event_log")
-        rows = cursor.fetchall()
-        conn.close()
-
-        return [EventType(
-            event_id=row['event_id'],
-            event_type=row['event_type'],
-            event_status=row['event_status'],
-            event_datetime=row['event_datetime'],
-            priority=row['priority'],
-            category=row['category']
-        ) for row in rows]
-
-# Define Mutation class to add events
-class AddEvent(graphene.Mutation):
-    class Arguments:
-        event_type = String(required=True)
-        event_status = String(required=True)
-        priority = String(required=True)
-        category = String(required=True)
-
-    ok = String()
-    event = Field(lambda: EventType)
-
-    def mutate(self, info, event_type, event_status, priority, category):
-        print(f"Received Mutation: event_type={event_type}, event_status={event_status}, priority={priority}, category={category}")
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            # Insert event into the database
-            cursor.execute('''
-                INSERT INTO event_log (event_type, event_status, priority, category)
-                VALUES (?, ?, ?, ?)
-            ''', (event_type, event_status, priority, category))
-
-            conn.commit()
-            event_id = cursor.lastrowid
-            print(f"Inserted Event with ID: {event_id}")
-
-            event = EventType(
-                event_id=event_id,
-                event_type=event_type,
-                event_status=event_status,
-                event_datetime="Now",
-                priority=priority,
-                category=category
-            )
-
-            return AddEvent(ok="Event added successfully", event=event)
-
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return AddEvent(ok="Failed to add event", event=None)
-
-        except Exception as e:
-            print(f"Other error: {e}")
-            return AddEvent(ok="Failed to add event", event=None)
-
-        finally:
-            conn.close()
-
-# Define the Mutation class
-class Mutation(graphene.ObjectType):
-    add_event = AddEvent.Field()
-
-# Create a schema for GraphQL
-# schema = Schema(query=Query, mutation=Mutation)
-schema = graphene.Schema(query=Query, mutation=Mutation)
-
-
-# Set up Flask route to handle GraphQL requests
-@app.route("/graphql", methods=["POST"])
-def graphql():
-    data = request.get_json()
-    result = schema.execute(data.get("query"))
-    return jsonify(result.data)
-
-@app.route("/test_db")
-def test_db():
+# Create an event
+@app.route('/event', methods=['POST'])
+def create_event():
+    new_event = request.get_json()
+    event_type = new_event['event_type']
+    event_status = new_event['event_status']
+    priority = new_event['priority']
+    category = new_event['category']
+    
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO event_log (event_type, event_status, priority, category)
+        VALUES (?, ?, ?, ?)
+    ''', (event_type, event_status, priority, category))
+    conn.commit()
+    conn.close()
     
-    try:
-        # Try inserting a test event into the database
+    return jsonify({'message': 'Event created successfully'}), 201
+
+# Get all events
+@app.route('/events', methods=['GET'])
+def get_events():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM event_log')
+    events = cursor.fetchall()
+    conn.close()
+    
+    return jsonify([dict(event) for event in events])
+
+# Get a single event by ID
+@app.route('/event/<int:event_id>', methods=['GET'])
+def get_event(event_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM event_log WHERE event_id = ?', (event_id,))
+    event = cursor.fetchone()
+    conn.close()
+    
+    if event:
+        return jsonify(dict(event))
+    else:
+        return jsonify({'message': 'Event not found'}), 404
+
+# Update an event by ID
+@app.route('/event/<int:event_id>', methods=['PUT'])
+def update_event(event_id):
+    updated_event = request.get_json()
+    event_type = updated_event['event_type']
+    event_status = updated_event['event_status']
+    priority = updated_event['priority']
+    category = updated_event['category']
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE event_log
+        SET event_type = ?, event_status = ?, priority = ?, category = ?
+        WHERE event_id = ?
+    ''', (event_type, event_status, priority, category, event_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'Event updated successfully'})
+
+# Delete an event by ID (Delete)
+@app.route('/event/<int:event_id>', methods=['DELETE'])
+def delete_event(event_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM event_log WHERE event_id = ?', (event_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'message': 'Event deleted successfully'})
+
+# Event simulator function
+def generate_random_event():
+    event_types = ['ERROR', 'WARNING', 'INFO', 'CRITICAL']
+    event_statuses = ['PENDING', 'OPEN', 'CLOSED', 'FAILED']
+    priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+    categories = ['SYSTEM', 'SECURITY', 'APPLICATION', 'NETWORK']
+
+    return {
+        'event_type': random.choice(event_types),
+        'event_status': random.choice(event_statuses),
+        'priority': random.choice(priorities),
+        'category': random.choice(categories),
+    }
+
+# Background thread to simulate events
+def simulate_events():
+    while True:
+        event = generate_random_event()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO event_log (event_type, event_status, priority, category)
             VALUES (?, ?, ?, ?)
-        ''', ('TEST_TYPE', 'TEST_STATUS', 'HIGH', 'TEST_CATEGORY'))
-
+        ''', (event['event_type'], event['event_status'], event['priority'], event['category']))
         conn.commit()
-        return "Event added successfully!"
-    except Exception as e:
-        return f"Error: {e}"
-    finally:
         conn.close()
 
+        print(f"Generated event: {event}")
+        
+        time.sleep(1200)  # Sleep for 2 min before generating another event
 
-# Define a route for the root URL to avoid 404
-@app.route('/')
-def index():
-    return "Welcome to the GraphQL API"
-
+# Start the simulator thread when the Flask app starts
+threading.Thread(target=simulate_events, daemon=True).start()
 # Run the Flask app
+
 if __name__ == '__main__':
     app.run(debug=True)
