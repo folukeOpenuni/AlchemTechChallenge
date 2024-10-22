@@ -4,7 +4,7 @@ import sqlite3
 conn = sqlite3.connect('event_log.db')
 cursor = conn.cursor()
 
-# Create the updated event_log table with new columns
+# Create the event_log table with new columns
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS event_log (
         event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,4 +20,4 @@ cursor.execute('''
 conn.commit()
 conn.close()
 
-print("Database and table created/updated successfully.")
+print("Database and table created successfully.")
