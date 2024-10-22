@@ -6,6 +6,8 @@ __pycache__/
 # Ignore virtual environments
 venv/
 .env/
+.venv/
+
 
 # Ignore distribution files
 build/
@@ -14,5 +16,5 @@ dist/
 
 # Ignore other files
 .DS_Store
-# Ignore the entire virtual environment folder
-.venv/
+
+node_modules/
